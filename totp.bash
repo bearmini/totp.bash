@@ -30,22 +30,67 @@ test_compare() {
   fi
 }
 
+plain_text_to_hex_string() {
+  local plain_text=$1
+  echo -n "$plain_text" | xxd -p
+}
+
+test_plain_text_to_hex_string() {
+  test_compare "$( plain_text_to_hex_string "abc" )" "616263"
+}
+
+hex_string_to_plain_text() {
+  local hex_string=$1
+  echo -n "$hex_string" | xxd -r -p
+}
+
+test_hex_string_to_plain_text() {
+  test_compare "$( hex_string_to_plain_text "616263" )" "abc"
+}
+
+generate_totp_uri_with_encoded_secret() {
+  local issuer=$1
+  local account=$2
+  local encoded_secret=$3
+  echo "otpauth://totp/${issuer}:${account}?secret=${encoded_secret}&issuer=${issuer}&algorithm=${totp_algorithm}&digits=${totp_digits}&period=${totp_period}"
+}
+
 generate_totp_uri() {
   local issuer=$1
   local account=$2
   local secret_plain_text=$3
   local encoded_secret
-  encoded_secret="$( echo "$secret_plain_text" | base32 )"
-  echo "otpauth://totp/${issuer}:${account}?secret=${encoded_secret}&issuer=${issuer}&algorithm=${totp_algorithm}&digits=${totp_digits}&period=${totp_period}"
+  encoded_secret="$( echo -n "$secret_plain_text" | base32 )"
+  generate_totp_uri_with_encoded_secret "$issuer" "$account" "$encoded_secret"
 }
 
 test_generate_totp_uri() {
   local issuer="TestIssuer"
   local account="TestAccountName"
   local secret_plain_text="P@ssw0rd"
-  local expected="otpauth://totp/TestIssuer:TestAccountName?secret=KBAHG43XGBZGICQ=&issuer=TestIssuer&algorithm=SHA1&digits=6&period=30"
+  local expected="otpauth://totp/TestIssuer:TestAccountName?secret=KBAHG43XGBZGI===&issuer=TestIssuer&algorithm=SHA1&digits=6&period=30"
   local actual
   actual="$( generate_totp_uri "$issuer" "$account" "$secret_plain_text" )"
+  test_compare "$actual" "$expected"
+}
+
+generate_totp_uri_with_hex_key() {
+  local issuer=$1
+  local account=$2
+  local secret_hex_string=$3
+  local encoded_secret
+  encoded_secret="$( hex_string_to_plain_text "$secret_hex_string" | base32 )"
+  generate_totp_uri_with_encoded_secret "$issuer" "$account" "$encoded_secret"
+}
+
+test_generate_totp_uri_with_hex_key() {
+  local issuer="TestIssuer"
+  local account="TestAccountName"
+  local secret_hex_string
+  local expected="otpauth://totp/TestIssuer:TestAccountName?secret=KBAHG43XGBZGI===&issuer=TestIssuer&algorithm=SHA1&digits=6&period=30"
+  local actual
+  secret_hex_string="$( plain_text_to_hex_string "P@ssw0rd" )"
+  actual="$( generate_totp_uri_with_hex_key "$issuer" "$account" "$secret_hex_string" )"
   test_compare "$actual" "$expected"
 }
 
@@ -55,8 +100,8 @@ extract_secret_parameter_from_totp_uri() {
 }
 
 test_extract_secret_parameter_from_totp_uri() {
-  local totp_uri="otpauth://totp/TestIssuer:TestAccountName:WithColon?secret=KBAHG43XGBZGICQ=&issuer=TestIssuer&algorithm=SHA1&digits=6&period=30"
-  local expected="KBAHG43XGBZGICQ="
+  local totp_uri="otpauth://totp/TestIssuer:TestAccountName:WithColon?secret=KBAHG43XGBZGI===&issuer=TestIssuer&algorithm=SHA1&digits=6&period=30"
+  local expected="KBAHG43XGBZGI==="
   local actual
   actual="$( extract_secret_parameter_from_totp_uri "$totp_uri" )"
   test_compare "$actual" "$expected"
@@ -68,10 +113,24 @@ extract_secret_plain_text_from_totp_uri() {
 }
 
 test_extract_secret_plain_text_from_totp_uri() {
-  local totp_uri="otpauth://totp/TestIssuer:TestAccountName:WithColon?secret=KBAHG43XGBZGICQ=&issuer=TestIssuer&algorithm=SHA1&digits=6&period=30"
+  local totp_uri="otpauth://totp/TestIssuer:TestAccountName:WithColon?secret=KBAHG43XGBZGI===&issuer=TestIssuer&algorithm=SHA1&digits=6&period=30"
   local expected="P@ssw0rd"
   local actual
   actual="$( extract_secret_plain_text_from_totp_uri "$totp_uri" )"
+  test_compare "$actual" "$expected"
+}
+
+extract_secret_hex_string_from_totp_uri() {
+  local totp_uri=$1
+  plain_text_to_hex_string "$( extract_secret_plain_text_from_totp_uri "$totp_uri" )"
+}
+
+test_extract_secret_hex_string_from_totp_uri() {
+  local totp_uri="otpauth://totp/TestIssuer:TestAccountName:WithColon?secret=KBAHG43XGBZGI===&issuer=TestIssuer&algorithm=SHA1&digits=6&period=30"
+  local expected
+  local actual
+  expected="$( plain_text_to_hex_string "P@ssw0rd" )"
+  actual="$( extract_secret_hex_string_from_totp_uri "$totp_uri" )"
   test_compare "$actual" "$expected"
 }
 
@@ -132,13 +191,13 @@ test_hmac_with_hex_key() {
   local expected
   local actual
 
-  k="$( echo -n "P@ssw0rd" | xxd -p )"
+  k="$( plain_text_to_hex_string "P@ssw0rd" )"
   c="0"
   expected="c3a33df250c0b6d2ee6b3b7dab5e2a28d9c2390c"
   actual=$( hmac_with_hex_key "$k" "$c" )
   test_compare "$actual" "$expected"
 
-  k="$( echo -n "P@ssw0rd" | xxd -p )"
+  k="$( plain_text_to_hex_string "P@ssw0rd" )"
   c="123456"
   expected="9f589f6fbcee7365e20429fbe9f6943df914702b"
   actual=$( hmac_with_hex_key "$k" "$c" )
@@ -334,8 +393,13 @@ calculate_totp_with_hex_key() {
 }
 
 test_all() {
+  test_plain_text_to_hex_string
+  test_hex_string_to_plain_text
+  test_generate_totp_uri
+  test_generate_totp_uri_with_hex_key
   test_extract_secret_parameter_from_totp_uri
   test_extract_secret_plain_text_from_totp_uri
+  test_extract_secret_hex_string_from_totp_uri
   test_hmac
   test_hmac_with_hex_key
   test_lsb_4bits
