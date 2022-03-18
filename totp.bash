@@ -251,7 +251,7 @@ calculate_hotp_value() {
   h="$( truncate "$( hmac "$k" "$c" )" )"
   local mod_base
   mod_base="$( get_mod_base )"
-  echo "$(( h % mod_base ))"
+  echo -n "$(( h % mod_base ))"
 }
 
 test_calculate_hotp_value() {
@@ -285,7 +285,7 @@ calculate_hotp_value_with_hex_key() {
   h="$( truncate "$( hmac_with_hex_key "$k" "$c" )" )"
   local mod_base
   mod_base="$( get_mod_base )"
-  echo "$(( h % mod_base ))"
+  echo -n "$(( h % mod_base ))"
 }
 
 test_calculate_hotp_value_with_hex_key() {
