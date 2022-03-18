@@ -76,7 +76,7 @@ test_extract_secret_plain_text_from_totp_uri() {
 }
 
 hmac() {
-  local k=$1 # secret key
+  local k=$1 # secret key - plain text
   local c=$2 # counter
 
   case "$totp_algorithm" in
@@ -107,6 +107,41 @@ test_hmac() {
   c="123456"
   expected="9f589f6fbcee7365e20429fbe9f6943df914702b"
   actual=$( hmac "$k" "$c" )
+  test_compare "$actual" "$expected"
+}
+
+hmac_with_hex_key() {
+  local k=$1 # secret key - hex string
+  local c=$2 # counter
+
+  case "$totp_algorithm" in
+    "SHA1")
+      result="$( echo -n "$( printf %016X "$c" )" | xxd -r -p | openssl dgst -sha1 -mac HMAC -macopt "hexkey:$k" )"
+      echo "${result##*+( )}"
+      ;;
+    *)
+      echo "HMAC algorithm $totp_algorithm is not supported" 2>&1
+      exit 1
+      ;;
+  esac
+}
+
+test_hmac_with_hex_key() {
+  local k
+  local c
+  local expected
+  local actual
+
+  k="$( echo -n "P@ssw0rd" | xxd -p )"
+  c="0"
+  expected="c3a33df250c0b6d2ee6b3b7dab5e2a28d9c2390c"
+  actual=$( hmac_with_hex_key "$k" "$c" )
+  test_compare "$actual" "$expected"
+
+  k="$( echo -n "P@ssw0rd" | xxd -p )"
+  c="123456"
+  expected="9f589f6fbcee7365e20429fbe9f6943df914702b"
+  actual=$( hmac_with_hex_key "$k" "$c" )
   test_compare "$actual" "$expected"
 }
 
@@ -209,7 +244,7 @@ get_mod_base() {
 
 calculate_hotp_value() {
   # https://en.wikipedia.org/wiki/HMAC-based_one-time_password
-  local k=$1 # secret key
+  local k=$1 # secret key - plain text
   local c=$2 # counter
 
   local h
@@ -241,25 +276,73 @@ test_calculate_hotp_value() {
   test_compare "$actual" "$expected"
 }
 
+calculate_hotp_value_with_hex_key() {
+  # https://en.wikipedia.org/wiki/HMAC-based_one-time_password
+  local k=$1 # secret key - hex string
+  local c=$2 # counter
+
+  local h
+  h="$( truncate "$( hmac_with_hex_key "$k" "$c" )" )"
+  local mod_base
+  mod_base="$( get_mod_base )"
+  echo "$(( h % mod_base ))"
+}
+
+test_calculate_hotp_value_with_hex_key() {
+  local k
+  k="$( echo -n "P@ssw0rd" | xxd -p )"
+  local c
+  local expected
+  local actual
+
+  c=0
+  expected="591464"
+  actual="$( calculate_hotp_value_with_hex_key "$k" "$c" )"
+  test_compare "$actual" "$expected"
+
+  c=1
+  expected="115908"
+  actual="$( calculate_hotp_value_with_hex_key "$k" "$c" )"
+  test_compare "$actual" "$expected"
+
+  c=2
+  expected="153515"
+  actual="$( calculate_hotp_value_with_hex_key "$k" "$c" )"
+  test_compare "$actual" "$expected"
+}
+
 calculate_totp() {
-  local password=$1
+  local secret=$1 # plain text
   local t
   t="$( date +%s )"
 
   local ct
   ct=$(( t / totp_period ))
 
-  calculate_hotp_value "$password" "$ct"
+  calculate_hotp_value "$secret" "$ct"
+}
+
+calculate_totp_with_hex_key() {
+  local secret=$1 # hex string
+  local t
+  t="$( date +%s )"
+
+  local ct
+  ct=$(( t / totp_period ))
+
+  calculate_hotp_value_with_hex_key "$secret" "$ct"
 }
 
 test_all() {
   test_extract_secret_parameter_from_totp_uri
   test_extract_secret_plain_text_from_totp_uri
   test_hmac
+  test_hmac_with_hex_key
   test_lsb_4bits
   test_extract31
   test_truncate
   test_calculate_hotp_value
+  test_calculate_hotp_value_with_hex_key
 }
 
 # for testing each function
