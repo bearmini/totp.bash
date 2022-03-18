@@ -10,7 +10,7 @@ Time-based one-time password ([RFC6238](https://datatracker.ietf.org/doc/html/rf
 totp.bash generate_totp_uri "$secret_plain_text"
 ```
 
-## Parse TOTP URI and extact secret plain text
+## Parse TOTP URI and extract secret plain text
 
 ```sh
 totp.bash extract_secret_plain_text_from_totp_uri "$totp_uri"
