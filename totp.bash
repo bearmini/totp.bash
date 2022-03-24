@@ -122,7 +122,7 @@ test_extract_secret_plain_text_from_totp_uri() {
 
 extract_secret_hex_string_from_totp_uri() {
   local totp_uri=$1
-  plain_text_to_hex_string "$( extract_secret_plain_text_from_totp_uri "$totp_uri" )"
+  extract_secret_parameter_from_totp_uri "$totp_uri" | base32 -d | xxd -p
 }
 
 test_extract_secret_hex_string_from_totp_uri() {
